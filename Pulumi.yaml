@@ -1,0 +1,3 @@
+name: eks-canary
+runtime: nodejs
+description: Quickstart eks cluster with canary deploys
