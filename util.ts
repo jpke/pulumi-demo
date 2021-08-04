@@ -19,16 +19,40 @@ export interface PromPortForwardOpts {
 //
 // This is useful for when we can't run Pulumi in-cluster, in which case simply calling to the
 // appropriate KubeDNS URL is not sufficient.
+// export function forwardPrometheusService(
+//     service: {metadata: {name: string}},
+//     // deployment: pulumi.Input<k8s.apps.v1.Deployment>,
+//     opts: PromPortForwardOpts,
+// ): pulumi.Output<() => void> {
+//     if (pulumi.runtime.isDryRun()) {
+//         return pulumi.output(() => undefined);
+//     }
+
+//     return pulumi.all([service]).apply(([s, d]) => pulumi.all([s.metadata])).apply(([meta]) => {
+//         return new Promise<() => void>((resolve, reject) => {
+//             const forwarderHandle = spawn("kubectl", [
+//                 "port-forward",
+//                 `service/${meta.name}`,
+//                 `${opts.localPort}:${opts.targetPort || 80}`,
+//             ]);
+
+//             // NOTE: we need to wrap `forwarderHandle.kill` because of JavaScript's `this`
+//             // semantics.
+//             forwarderHandle.stdout.on("data", data => resolve(() => forwarderHandle.kill()));
+//             forwarderHandle.stderr.on("data", data => reject());
+//         });
+//     });
+// }
 export function forwardPrometheusService(
-    service: {metadata: {name: string}},
-    // deployment: pulumi.Input<k8s.apps.v1.Deployment>,
+    service: pulumi.Input<k8s.core.v1.Service>,
+    deployment: pulumi.Input<k8s.apps.v1.Deployment>,
     opts: PromPortForwardOpts,
 ): pulumi.Output<() => void> {
     if (pulumi.runtime.isDryRun()) {
         return pulumi.output(() => undefined);
     }
 
-    return pulumi.all([service]).apply(([s, d]) => pulumi.all([s.metadata])).apply(([meta]) => {
+    return pulumi.all([service, deployment]).apply(([s, d]) => pulumi.all([s.metadata, d.urn])).apply(([meta]) => {
         return new Promise<() => void>((resolve, reject) => {
             const forwarderHandle = spawn("kubectl", [
                 "port-forward",

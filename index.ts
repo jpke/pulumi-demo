@@ -26,7 +26,7 @@ export const kubeconfig = cluster.kubeconfig
 // Deploy nginx with classic loadbalancer
 // export const nginx = createNginx(name, cluster.provider);
 
-export const canary = createCanary(name, cluster.provider);
+// export const canary = createCanary(name, cluster.provider);
 
 // // Copyright 2016-2019, Pulumi Corporation.  All rights reserved.
 

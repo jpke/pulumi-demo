@@ -31,16 +31,20 @@ export function createCanary(appName: string, provider: pulumi.ProviderResource)
       },
   };
 
-  const p8sService = prometheus.getResource("v1/Service", "p8s-prometheus-server");
+  const p8sService = prometheus.getResource("v1/Service", "default/p8s-prometheus-server");
   const p8sDeployment = prometheus.getResource(
       "apps/v1/Deployment",
-      "p8s-prometheus-server",
+      "default/p8s-prometheus-server",
   );
 
   // IMPORTANT: This forwards the Prometheus service to localhost, so we can check it. If you are
   // running in-cluster, you probably don't need this!
+  // const localPort = 9090;
+  // const forwarderHandle = util.forwardPrometheusService({ metadata: { name: "p8s-prometheus-server" } }, {
+  //     localPort,
+  // });
   const localPort = 9090;
-  const forwarderHandle = util.forwardPrometheusService({ metadata: { name: "p8s-prometheus-server" } }, {
+  const forwarderHandle = util.forwardPrometheusService(p8sService, p8sDeployment, {
       localPort,
   });
 
@@ -66,39 +70,42 @@ export function createCanary(appName: string, provider: pulumi.ProviderResource)
       { dependsOn: p8sDeployment, provider },
   );
 
-  // Staging ring. Replicate instrumented Pod 10 times.
-  const staging = new k8s.apps.v1.Deployment("staging-example-app", {
-      metadata: {
-          annotations: {
-              // Check P90 latency is < 100,000 microseconds. Returns a `Promise<string>` with the P90
-              // response time. It must resolve correctly before this deployment rolls out. In
-              // general any `Promise<T>` could go here.
-              "example.com/p90ResponseTime": util.checkHttpLatency(canary, containerName, {
-                  durationSeconds: 60,
-                  quantile: 0.9,
-                  thresholdMicroseconds: 100000,
-                  prometheusEndpoint: `localhost:${localPort}`,
-                  forwarderHandle,
-              }),
-          },
-          labels: {
-            app: containerName,
-          }
-      },
-      spec: { 
-        replicas: 1, 
-        selector: { 
-          matchLabels: {
-            app: containerName
-          }
-        }, 
-        template: instrumentedPod 
-      }
-  },{provider});
-
-  return {
-    // p90ResponseTime: staging.metadata.annotations["example.com/p90ResponseTime"],
-    p8sService,
-    p8sDeployment
+  function kill(forwarderHandle: pulumi.Output<() => void>) : void {
+    forwarderHandle || (() => undefined);
   }
+  kill(forwarderHandle);
+
+  // // Staging ring. Replicate instrumented Pod 10 times.
+  // const staging = new k8s.apps.v1.Deployment("staging-example-app", {
+  //     metadata: {
+  //         annotations: {
+  //             // Check P90 latency is < 100,000 microseconds. Returns a `Promise<string>` with the P90
+  //             // response time. It must resolve correctly before this deployment rolls out. In
+  //             // general any `Promise<T>` could go here.
+  //             "example.com/p90ResponseTime": util.checkHttpLatency(canary, containerName, {
+  //                 durationSeconds: 60,
+  //                 quantile: 0.9,
+  //                 thresholdMicroseconds: 100000,
+  //                 prometheusEndpoint: `localhost:${localPort}`,
+  //                 forwarderHandle,
+  //             }),
+  //         },
+  //         labels: {
+  //           app: containerName,
+  //         }
+  //     },
+  //     spec: { 
+  //       replicas: 1, 
+  //       selector: { 
+  //         matchLabels: {
+  //           app: containerName
+  //         }
+  //       }, 
+  //       template: instrumentedPod 
+  //     }
+  // },{provider});
+
+  // return {
+  //   p90ResponseTime: staging.metadata.annotations["example.com/p90ResponseTime"]
+  // }
 }
