@@ -1,3 +1,3 @@
-name: eks-canary
+name: eks
 runtime: nodejs
-description: Quickstart eks cluster with canary deploys
+description: EKS cluster for demo

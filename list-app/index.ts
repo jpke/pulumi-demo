@@ -7,7 +7,7 @@ import * as k8s from "@pulumi/kubernetes";
 // const image = repo.buildAndPushImage("./app");
 
 // Point to existing K8s cluster.
-const provider = new k8s.Provider("cluster", { kubeconfig: "../eks/kubeconfig" });
+const provider = new k8s.Provider("cluster", { kubeconfig: "../cluster/kubeconfig" });
 
 // Create a NGINX Deployment and load balanced Service, running our app.
 const appName = "list-app";

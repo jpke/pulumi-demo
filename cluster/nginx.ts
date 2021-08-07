@@ -4,7 +4,7 @@ import * as k8s from "@pulumi/kubernetes";
 export function createNginx(name: string, provider: pulumi.ProviderResource) {
 
   // Create a Kubernetes Namespace
-  const ns = new k8s.core.v1.Namespace(name, {}, { provider });
+  const ns = new k8s.core.v1.Namespace(name, {metadata: {name}}, { provider });
 
   // Export the Namespace name
   const namespaceName = ns.metadata.apply(m => m.name);
@@ -52,7 +52,7 @@ export function createNginx(name: string, provider: pulumi.ProviderResource) {
               namespace: namespaceName,
           },
           spec: {
-              type: "LoadBalancer",
+              type: "ClusterIP",
               ports: [{ port: 80, targetPort: "http" }],
               selector: appLabels,
           },
@@ -62,12 +62,48 @@ export function createNginx(name: string, provider: pulumi.ProviderResource) {
       }
   );
 
+  const serviceName = service.metadata.name;
+
+  const ingress = new k8s.networking.v1.Ingress("nginx", {
+    metadata: {
+        name: "nginx",
+        annotations: {
+            "kubernetes.io/ingress.class": "nginx"
+        },
+        namespace: namespaceName,
+    },
+    spec: {
+        rules: [
+            {
+                http: {
+                    paths: [
+                        {
+                            path: "/",
+                            pathType: "Prefix",
+                            backend: {
+                                service: {
+                                    name: service.metadata.name,
+                                    port: {
+                                        name: "http",
+                                    }
+                                }
+                            }
+                        },
+                    ],
+                },
+            }
+        ]
+    },
+  });
+
+
+
   // Export the Service name and public LoadBalancer Endpoint
   return {
     namespaceName,
     deploymentName,
     serviceName: service.metadata.apply(m => m.name),
-    serviceHostname: service.status.apply(s => s.loadBalancer.ingress[0].hostname)
+    // serviceHostname: service.status.apply(s => s.loadBalancer.ingress[0].hostname)
   }
 
 }
