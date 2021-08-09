@@ -3,6 +3,7 @@ import * as aws from "@pulumi/aws";
 import * as awsx from "@pulumi/awsx";
 import * as eks from "@pulumi/eks";
 import * as k8s from "@pulumi/kubernetes";
+// import * as kq from "@pulumi/query-kubernetes";
 import { createCert, createDNSRecord } from "./cert";
 import { createNginx } from "./nginx";
 
@@ -30,6 +31,52 @@ export const kubeconfig = cluster.kubeconfig
 // pulumi stack output kubeconfig > kubeconfig
 
 export const cert = createCert(domainName, subdomains);
+
+const removeHelmHooksTransformation = (
+    o: pulumi.ResourceTransformationArgs
+  ): pulumi.ResourceTransformationResult => {
+    if (o.props?.metadata?.annotations?.["helm.sh/hook"]) {
+      const {
+        "helm.sh/hook": junk,
+        "helm.sh/hook-delete-policy": junk2,
+        ...validAnnotations
+      } = o.props.metadata.annotations
+      return {
+        props: {
+          ...o.props,
+          metadata: {
+            ...o.props.metadata,
+            annotations: validAnnotations,
+          },
+        },
+        opts: o.opts,
+      }
+    }
+    return o
+  }
+
+// const nginxIngressController = new k8s.kustomize.Directory("nginxIngressController", {
+//     directory: "./nginxIngressController",
+//     transformations: [
+//     // configure per instructions at https://kubernetes.github.io/ingress-nginx/deploy/
+//         (obj: any, opts: pulumi.CustomResourceOptions) => {
+//             if (obj?.data?.["proxy-real-ip-cidr"]) {
+//                 obj.data["proxy-real-ip-cidr"] = "10.0.0.0/16";
+//             }
+//         },
+//         (obj: any, opts: pulumi.CustomResourceOptions) => {
+//             if (obj?.metadata?.annotations?.["service.beta.kubernetes.io/aws-load-balancer-ssl-cert"]) {
+//                 obj.metadata.annotations["service.beta.kubernetes.io/aws-load-balancer-ssl-cert"] = cert.arn;
+//             }
+//         },
+//         removeHelmHooksTransformation,
+//     ],
+// });
+
+// export const svc = nginxIngressController.resources["v1/Service::ingress-nginx/ingress-nginx-controller"];
+
+// export const nginxService = kq.list("v1", "Service", "ingress-nginx").filter(service => service.metadata.name === "ingress-nginx-controller");
+// export const nginxLoadBalancerUrl = svc.status.loadBalancer.ingress[0].hostname
 
 const nginxNamespace = new k8s.core.v1.Namespace("nginx", {metadata: {name: "nginx"}}, { provider: cluster.provider });
 
@@ -61,9 +108,6 @@ export const nginxLoadBalancerUrl = nginxService.status.loadBalancer.ingress[0].
 
 const attachALBtoR53 = createDNSRecord(domainName, subdomains, nginxLoadBalancerUrl);
 
-// Deploy nginx with classic loadbalancer
-// export const nginx = createNginx("nginx-app", cluster.provider);
-
 const prometheusNamespace = new k8s.core.v1.Namespace("prometheus", {metadata: {name: "prometheus"}}, { provider: cluster.provider });
 const prometheus = new k8s.helm.v3.Chart("p8s", {
     namespace: "prometheus",
@@ -89,3 +133,8 @@ const prometheus = new k8s.helm.v3.Chart("p8s", {
 },{
     provider: cluster.provider
 });
+
+
+
+// Deploy nginx with classic loadbalancer
+// export const nginx = createNginx("nginx-app", cluster.provider);
