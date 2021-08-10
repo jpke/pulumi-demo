@@ -3,10 +3,8 @@
 import * as k8s from "@pulumi/kubernetes";
 import * as pulumi from "@pulumi/pulumi";
 
-// Minikube does not implement services of type `LoadBalancer`; require the user to specify if we're
-// running on minikube, and if so, create only services of type ClusterIP.
 const config = new pulumi.Config();
-const isMinikube = config.getBoolean("isMinikube");
+const clusterIP = config.getBoolean("clusterIP");
 
 //
 // REDIS LEADER.
@@ -112,16 +110,52 @@ const frontendService = new k8s.core.v1.Service("frontend", {
         name: "frontend",
     },
     spec: {
-        type: isMinikube ? "ClusterIP" : "LoadBalancer",
-        ports: [{ port: 80 }],
+        type: clusterIP ? "ClusterIP" : "LoadBalancer",
+        ports: [{ name: "http", port: 80 }],
         selector: frontendDeployment.spec.template.metadata.labels,
     },
 });
 
-// Export the frontend IP.
-export let frontendIp: pulumi.Output<string>;
-if (isMinikube) {
-    frontendIp = frontendService.spec.clusterIP;
-} else {
-    frontendIp = frontendService.status.loadBalancer.ingress[0].hostname;
-}
+const clusterStack = new pulumi.StackReference(config.get("clusterStack")!);
+const clusterDomain = clusterStack.getOutput("clusterDomain");
+
+clusterDomain.apply(domain => {
+    if(!domain || !clusterIP) return;
+
+    new k8s.networking.v1.Ingress("nginx", {
+        metadata: {
+            name: "guestbook",
+            annotations: {
+                "kubernetes.io/ingress.class": "nginx"
+            }
+        },
+        spec: {
+            rules: [
+                {   host: `guestbook.${domain}`,
+                    http: {
+                        paths: [
+                            {
+                                path: "/",
+                                pathType: "Prefix",
+                                backend: {
+                                    service: {
+                                        name: frontendService.metadata.name,
+                                        port: {
+                                            name: "http",
+                                        }
+                                    }
+                                }
+                            },
+                        ],
+                    },
+                }
+            ]
+        },
+    });
+});
+
+export const appDomain = clusterDomain.apply(domain => 
+    (!domain || !clusterIP) ? 
+    frontendService?.status?.loadBalancer?.ingress?.[0]?.hostname :
+    `guestbook.${domain}`
+);

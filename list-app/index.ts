@@ -1,10 +1,10 @@
 import * as awsx from "@pulumi/awsx";
 import * as eks from "@pulumi/eks";
 import * as k8s from "@pulumi/kubernetes";
+import * as pulumi from "@pulumi/pulumi";
 
 // // Build and publish to an ECR registry.
-// const repo = new awsx.ecr.Repository("my-repo");
-// const image = repo.buildAndPushImage("./app");
+const repository = new awsx.ecr.Repository("pulumi-repo");
 
 // Point to existing K8s cluster.
 const provider = new k8s.Provider("cluster", { kubeconfig: "../cluster/kubeconfig" });
@@ -22,7 +22,8 @@ const deployment = new k8s.apps.v1.Deployment(`${appName}`, {
             spec: {
                 containers: [{
                     name: appName,
-                    image: awsx.ecr.buildAndPushImage("app-repo", "./app").image(),
+                    image: repository.buildAndPushImage("./app"),
+                    // image: awsx.ecr.buildAndPushImage("pulumi-repo", "./app",).image(),
                     ports: [{ name: "http", containerPort: 3000 }]
                 }],
             }
@@ -32,11 +33,49 @@ const deployment = new k8s.apps.v1.Deployment(`${appName}`, {
 const service = new k8s.core.v1.Service(`${appName}`, {
     metadata: { labels: appLabels },
     spec: {
-        type: "LoadBalancer",
+        type: "ClusterIP",
         ports: [{ port: 80, targetPort: "http" }],
         selector: appLabels,
     },
 }, { provider});
 
-// Export the URL for the load balanced service.
-export const url = service.status.loadBalancer.ingress[0].hostname;
+const config = new pulumi.Config();
+const clusterStack = new pulumi.StackReference(config.get("clusterStack")!);
+const clusterDomain = clusterStack.getOutput("clusterDomain");
+
+export const listAppDomain = clusterDomain.apply(domain => `list-app.${domain}`);
+
+clusterDomain.apply(domain => {
+    if(!domain) return;
+
+    new k8s.networking.v1.Ingress("list-app", {
+        metadata: {
+            name: "list-app",
+            annotations: {
+                "kubernetes.io/ingress.class": "nginx"
+            }
+        },
+        spec: {
+            rules: [
+                {   host: listAppDomain,
+                    http: {
+                        paths: [
+                            {
+                                path: "/",
+                                pathType: "Prefix",
+                                backend: {
+                                    service: {
+                                        name: service.metadata.name,
+                                        port: {
+                                            name: "http",
+                                        }
+                                    }
+                                }
+                            },
+                        ],
+                    },
+                }
+            ]
+        },
+    });
+});

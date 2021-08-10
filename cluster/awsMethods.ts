@@ -1,7 +1,8 @@
 import * as pulumi from "@pulumi/pulumi"
 import * as aws from "@pulumi/aws";
 
-export function createCert(domainName: string, subdomains: Array<string>) {
+// creates an ACM cert, and corresponding DNS validation records; validates cert
+export function createACMCert(domainName: string, subdomains: Array<string>) {
 
   const r53zone = aws.route53.getZone({
       name: `${domainName}.`
@@ -18,7 +19,7 @@ export function createCert(domainName: string, subdomains: Array<string>) {
 
   let uniqueValidationDomains = new Array<string>();
 
-  const certValidationRecords = cert.domainValidationOptions.apply((dvos) => dvos.map((dvo) => {
+  cert.domainValidationOptions.apply((dvos) => dvos.map((dvo) => {
     // create record only for unique resourceRecordNames
     if(uniqueValidationDomains.indexOf(dvo.resourceRecordName) === -1){
       uniqueValidationDomains.push(dvo.resourceRecordName);
@@ -34,27 +35,28 @@ export function createCert(domainName: string, subdomains: Array<string>) {
     return null
   }));
 
-  const certValidation = new aws.acm.CertificateValidation("certValidation", {certificateArn: cert.arn});
+  new aws.acm.CertificateValidation("certValidation", {certificateArn: cert.arn});
 
   return {
     arn: cert.arn,
   }
 }
 
-export function createDNSRecord(domainName: string, subdomains: Array<string>, alb_url: pulumi.Output<string>) {
+// creates a CNAME record pointing a custom domain name to an aws load balancer
+export function attachLbtoCustomDomain(domainName: string, subdomains: Array<string>, lb_url: pulumi.Output<string>) {
 
   const r53zone = aws.route53.getZone({
       name: `${domainName}.`,
       privateZone: false,
   });
 
-  const subdomainRecords = subdomains.map((subdomain) => {
+  subdomains.map((subdomain) => {
     return new aws.route53.Record(`${subdomain}.${domainName}`, {
         zoneId: r53zone.then(r53zone => r53zone.zoneId),
         name: `${subdomain}.${domainName}`,
         type: "CNAME",
         ttl: 300,
-        records: [alb_url],
+        records: [lb_url],
     });
   })
 }

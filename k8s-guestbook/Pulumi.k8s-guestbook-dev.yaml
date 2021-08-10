@@ -1,0 +1,3 @@
+config:
+  k8s-guestbook:clusterIP: "true"
+  k8s-guestbook:clusterStack: jpke/eks/dev

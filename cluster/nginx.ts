@@ -1,7 +1,7 @@
 import * as pulumi from "@pulumi/pulumi"
 import * as k8s from "@pulumi/kubernetes";
 
-export function createNginx(name: string, provider: pulumi.ProviderResource) {
+export function createNginx(name: string, host: string, provider: pulumi.ProviderResource) {
 
   // Create a Kubernetes Namespace
   const ns = new k8s.core.v1.Namespace(name, {metadata: {name}}, { provider });
@@ -64,6 +64,8 @@ export function createNginx(name: string, provider: pulumi.ProviderResource) {
 
   const serviceName = service.metadata.name;
 
+ const nginxDomain = `nginx.${host}`;
+
   const ingress = new k8s.networking.v1.Ingress("nginx", {
     metadata: {
         name: "nginx",
@@ -74,7 +76,7 @@ export function createNginx(name: string, provider: pulumi.ProviderResource) {
     },
     spec: {
         rules: [
-            {
+            {   host: nginxDomain,
                 http: {
                     paths: [
                         {
@@ -96,14 +98,11 @@ export function createNginx(name: string, provider: pulumi.ProviderResource) {
     },
   });
 
-
-
-  // Export the Service name and public LoadBalancer Endpoint
   return {
     namespaceName,
     deploymentName,
     serviceName: service.metadata.apply(m => m.name),
-    // serviceHostname: service.status.apply(s => s.loadBalancer.ingress[0].hostname)
+    nginxDomain
   }
 
 }
