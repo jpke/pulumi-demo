@@ -4,6 +4,7 @@ import * as eks from "@pulumi/eks";
 import * as k8s from "@pulumi/kubernetes";
 import { createACMCert, attachLbtoCustomDomain } from "./awsMethods";
 import { createNginx } from "./nginx";
+import { deployPulumiOperator } from "./operator/deployPulumiOperator";
 
 const name = "eks";
 const domainName = "jpearnest.com";
@@ -21,8 +22,8 @@ const cluster = new eks.Cluster(name, {
     desiredCapacity: 2,
     minSize: 1,
     maxSize: 2,
-    // storageClasses: "gp2",
     deployDashboard: false,
+    createOidcProvider: true
 });
 
 export const kubeconfig = cluster.kubeconfig
@@ -124,3 +125,9 @@ new k8s.helm.v3.Chart("prometheus", {
 //
 
 export const nginx = createNginx("nginx-app", clusterDomain, cluster.provider);
+
+//
+// Pulumi Operator
+//
+
+deployPulumiOperator(cluster)

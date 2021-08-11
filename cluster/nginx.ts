@@ -66,43 +66,43 @@ export function createNginx(name: string, host: string, provider: pulumi.Provide
 
  const nginxDomain = `nginx.${host}`;
 
-  const ingress = new k8s.networking.v1.Ingress("nginx", {
-    metadata: {
-        name: "nginx",
-        annotations: {
-            "kubernetes.io/ingress.class": "nginx"
-        },
-        namespace: namespaceName,
-    },
-    spec: {
-        rules: [
-            {   host: nginxDomain,
-                http: {
-                    paths: [
-                        {
-                            path: "/",
-                            pathType: "Prefix",
-                            backend: {
-                                service: {
-                                    name: service.metadata.name,
-                                    port: {
-                                        name: "http",
-                                    }
-                                }
-                            }
-                        },
-                    ],
+    const ingress = new k8s.networking.v1.Ingress("nginx",
+        {
+            metadata: {
+                name: "nginx",
+                annotations: {
+                    "kubernetes.io/ingress.class": "nginx"
                 },
-            }
-        ]
-    },
-  });
+                namespace: namespaceName,
+            },
+            spec: {
+                rules: [
+                    {   host: nginxDomain,
+                        http: {
+                            paths: [
+                                {
+                                    path: "/",
+                                    pathType: "Prefix",
+                                    backend: {
+                                        service: {
+                                            name: service.metadata.name,
+                                            port: {
+                                                name: "http",
+                                            }
+                                        }
+                                    }
+                                },
+                            ],
+                        },
+                    }
+                ]
+            },
+        },
+        { 
+            provider
+        }
+    );
 
-  return {
-    namespaceName,
-    deploymentName,
-    serviceName: service.metadata.apply(m => m.name),
-    nginxDomain
-  }
+  return nginxDomain
 
 }
