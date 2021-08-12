@@ -3,6 +3,5 @@
 **/node_modules/
 kubeconfig
 **kubeconfig
-**/operator/stacks/*
 secrets/**
 notes.sh
