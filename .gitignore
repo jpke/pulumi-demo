@@ -4,3 +4,5 @@
 kubeconfig
 **kubeconfig
 **/operator/stacks/*
+secrets/**
+notes.sh

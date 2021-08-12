@@ -1,2 +1,4 @@
 config:
   aws:region: us-east-1
+  eks:clusterName: eks
+  eks:domainName: jpearnest.com

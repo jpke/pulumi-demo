@@ -4,16 +4,18 @@ import * as eks from "@pulumi/eks";
 import * as k8s from "@pulumi/kubernetes";
 import { createACMCert, attachLbtoCustomDomain } from "./awsMethods";
 
-const name = "eks";
-const domainName = "jpearnest.com";
-const subdomains = ["eks", "*.eks"];
-export const clusterDomain = `eks.${domainName}`;
+const config = new pulumi.Config();
+const name = config.get("clusterName");
+const domainName = config.get("domainName");
+
+export const subdomains = [`${name}`, `*.${name}`];
+export const clusterDomain = `${name}.${domainName}`;
 
 //
 // EKS cluster
 //
 const vpc = new awsx.ec2.Vpc("vpc", { subnets: [{ type: "public" }] });
-const cluster = new eks.Cluster(name, {
+const cluster = new eks.Cluster(name!, {
     vpcId: vpc.id,
     subnetIds: vpc.publicSubnetIds,
     desiredCapacity: 2,
@@ -29,18 +31,20 @@ export const clusterOidcProvider = cluster.core.oidcProvider;
 //
 // ACM Cert
 //
-export const cert = createACMCert(domainName, subdomains);
+export const cert = createACMCert(domainName!, subdomains);
 
 
 //
 // Nginx Ingress Controller
 //
-new k8s.core.v1.Namespace("nginx", {metadata: { name: "nginx-ingress" }}, { provider: cluster.provider });
+const nginxNamespace = "nginx-ingress";
+new k8s.core.v1.Namespace("nginx", {metadata: { name: nginxNamespace }}, { provider: cluster.provider });
+
 const nginxIngress = new k8s.helm.v3.Chart("nginx-ingress",
     {
         chart: "ingress-nginx",
         version: "3.35.0",
-        namespace: "nginx-ingress",
+        namespace: nginxNamespace,
         fetchOpts:{
             repo: "https://kubernetes.github.io/ingress-nginx",
         },
@@ -73,11 +77,10 @@ const nginxIngress = new k8s.helm.v3.Chart("nginx-ingress",
     },{ provider: cluster.provider }
 );
 
-const nginxService = nginxIngress.getResource("v1/Service", "nginx/nginx-ingress-ingress-nginx-controller");
-
+const nginxService = nginxIngress.getResource("v1/Service", `${nginxNamespace}/nginx-ingress-ingress-nginx-controller`);
 export const nginxLoadBalancerUrl = nginxService.status.loadBalancer.ingress[0].hostname
 
 //
 // Attach load balancer to Route 53 subdomain 
 //
-attachLbtoCustomDomain(domainName, subdomains, nginxLoadBalancerUrl);
+attachLbtoCustomDomain(domainName!, subdomains, nginxLoadBalancerUrl);

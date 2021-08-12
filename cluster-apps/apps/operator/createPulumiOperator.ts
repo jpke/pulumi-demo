@@ -1,17 +1,14 @@
 import * as aws from '@pulumi/aws'
 import * as k8s from '@pulumi/kubernetes'
 import * as pulumi from '@pulumi/pulumi'
-import * as eks from "@pulumi/eks"
 
 
-export function createPulumiOperator(kubeconfig: string, clusterOidcProvider: aws.iam.OpenIdConnectProvider) {
-  
-    const provider = new k8s.Provider('k8s', { kubeconfig });
+export function createPulumiOperator(clusterOidcProvider: aws.iam.OpenIdConnectProvider, provider: pulumi.ProviderResource) {
 
     const operatorName = 'operator';
     new k8s.core.v1.Namespace(operatorName, {metadata: { name: operatorName }}, { provider });
 
-    new k8s.yaml.ConfigFile("operator-crds", { file: "./operator/crds.yaml" });
+    new k8s.yaml.ConfigFile("operator-crds", { file: "./apps/operator/crds.yaml" });
   
     // Create the new IAM policy for the Service Account using the AssumeRoleWebWebIdentity action.
     const saAssumeRolePolicy = pulumi

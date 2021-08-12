@@ -94,32 +94,34 @@ export function createNginx(name: string, host: string, provider: pulumi.Provide
 export function createPrometheus(name: string, host: string, provider: pulumi.ProviderResource) {
 
     new k8s.core.v1.Namespace("prometheus", {metadata: {name: "prometheus"}}, { provider });
+
+    // host.apply(domain => {
+        const prometheusDomain = `prometheus.${host}`;
     
-    const prometheusDomain = `prometheus.${host}`;
-    
-    new k8s.helm.v3.Chart("prometheus",
-        {
-            namespace: "prometheus",
-            chart: "prometheus",
-            version: "13.8.0",
-            fetchOpts:{
-                repo: "https://prometheus-community.github.io/helm-charts",
-            },
-            values: {
-                server: {
-                    ingress: {
-                        enabled: true,
-                        annotations: {
-                            "kubernetes.io/ingress.class": "nginx"
-                        },
-                        hosts: [
-                            prometheusDomain
-                        ]
+        new k8s.helm.v3.Chart("prometheus",
+            {
+                namespace: "prometheus",
+                chart: "prometheus",
+                version: "13.8.0",
+                fetchOpts:{
+                    repo: "https://prometheus-community.github.io/helm-charts",
+                },
+                values: {
+                    server: {
+                        ingress: {
+                            enabled: true,
+                            annotations: {
+                                "kubernetes.io/ingress.class": "nginx"
+                            },
+                            hosts: [
+                                prometheusDomain
+                            ]
+                        }
                     }
                 }
-            }
-        },{ provider }
-    );
+            },{ provider }
+        );
+    // })
 
     return prometheusDomain
 }
