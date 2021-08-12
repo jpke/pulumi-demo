@@ -1,70 +1,66 @@
 import * as aws from '@pulumi/aws'
 import * as k8s from '@pulumi/kubernetes'
 import * as pulumi from '@pulumi/pulumi'
-import * as eks from "@pulumi/eks";
+import * as eks from "@pulumi/eks"
 
 
-export function deployPulumiOperator(cluster: eks.Cluster) {
+export function createPulumiOperator(kubeconfig: string, clusterOidcProvider: aws.iam.OpenIdConnectProvider) {
   
-  // Create a pulumi Kubernetes provider using the cluster's kubeconfig.
-  const provider = new k8s.Provider('k8s', { kubeconfig: cluster.kubeconfig });
-  
-  // Create a k8s namespace in the cluster.
-  const operatorName = 'operator';
-  new k8s.core.v1.Namespace(operatorName, {metadata: {name: operatorName}}, { provider });
+    const provider = new k8s.Provider('k8s', { kubeconfig });
 
-  // Deploy operator crds
-  new k8s.yaml.ConfigFile("operator-crds", { file: "./operator/crds.yaml" });
+    const operatorName = 'operator';
+    new k8s.core.v1.Namespace(operatorName, {metadata: { name: operatorName }}, { provider });
+
+    new k8s.yaml.ConfigFile("operator-crds", { file: "./operator/crds.yaml" });
   
-  // Get the OIDC provider's URL for the cluster.
-  const clusterOidcProvider = cluster.core.oidcProvider;
+    // Create the new IAM policy for the Service Account using the AssumeRoleWebWebIdentity action.
+    const saAssumeRolePolicy = pulumi
+        .all([clusterOidcProvider.url, clusterOidcProvider.arn])
+        .apply(([url, arn]) =>
+            aws.iam.getPolicyDocument(
+                {
+                    statements: [
+                        {
+                            actions: ['sts:AssumeRoleWithWebIdentity'],
+                            conditions: [
+                                {
+                                    test: 'StringEquals',
+                                    values: [`system:serviceaccount:${operatorName}:${operatorName}`], // namespace:name
+                                    variable: `${url.replace('https://', '')}:sub`,
+                                },
+                            ],
+                            effect: 'Allow',
+                            principals: [{identifiers: [arn], type: 'Federated'}],
+                        },
+                    ],
+                }
+            )
+        );
   
-  // Create the new IAM policy for the Service Account using the AssumeRoleWebWebIdentity action.
-  const saAssumeRolePolicy = pulumi
-    .all([clusterOidcProvider!.url, clusterOidcProvider!.arn])
-    .apply(([url, arn]) =>
-      aws.iam.getPolicyDocument({
-        statements: [
-          {
-            actions: ['sts:AssumeRoleWithWebIdentity'],
-            conditions: [
-              {
-                test: 'StringEquals',
-                values: [`system:serviceaccount:${operatorName}:${operatorName}`], // namespace:name
-                variable: `${url.replace('https://', '')}:sub`,
-              },
-            ],
-            effect: 'Allow',
-            principals: [{identifiers: [arn], type: 'Federated'}],
-          },
-        ],
-      })
-    );
+    // Create a new IAM role that assumes the AssumeRoleWebWebIdentity policy.
+    const saRole = new aws.iam.Role(operatorName, {
+        assumeRolePolicy: saAssumeRolePolicy.json,
+    });
+
+    // Attach the IAM role to an AWS S3 access policy.
+    new aws.iam.RolePolicyAttachment(operatorName, {
+        policyArn: 'arn:aws:iam::aws:policy/AmazonS3FullAccess',
+        role: saRole,
+    });
   
-  // Create a new IAM role that assumes the AssumeRoleWebWebIdentity policy.
-  const saRole = new aws.iam.Role(operatorName, {
-    assumeRolePolicy: saAssumeRolePolicy.json,
-  });
-  
-  // Attach the IAM role to an AWS S3 access policy.
-  new aws.iam.RolePolicyAttachment(operatorName, {
-    policyArn: 'arn:aws:iam::aws:policy/AmazonS3FullAccess',
-    role: saRole,
-  });
-  
-  // Create a Service Account with the IAM role annotated to use with the Pod.
-  new k8s.core.v1.ServiceAccount(
-    operatorName,
-    {
-      metadata: {
-        namespace: operatorName,
-        name: operatorName,
-        annotations: {
-          'eks.amazonaws.com/role-arn': saRole.arn,
+    // Create a Service Account with the IAM role annotated to use with the Pod.
+    new k8s.core.v1.ServiceAccount(operatorName,
+        {
+            metadata: {
+            namespace: operatorName,
+            name: operatorName,
+            annotations: {
+                'eks.amazonaws.com/role-arn': saRole.arn,
+            },
+            },
         },
-      },
-    },
-    { provider }); 
+        { provider }
+    ); 
 
     new k8s.rbac.v1.ClusterRole("operatorRole", {
         metadata: {
@@ -224,5 +220,4 @@ export function deployPulumiOperator(cluster: eks.Cluster) {
             },
         },
     });
-    
 }
